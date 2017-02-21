@@ -55,12 +55,13 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <libudev.h>
 
 #include "tbm_bufmgr_tgl.h"
+#include <vc4_drm.h>
 
 #define DEBUG
 #define USE_DMAIMPORT
 #define TBM_COLOR_FORMAT_COUNT 4
 
-#define EXYNOS_DRM_NAME "exynos"
+#define BCM_DRM_NAME "bcm2837"
 
 #ifdef DEBUG
 #define LOG_TAG	"TBM_BACKEND"
@@ -101,11 +102,11 @@ char *target_name()
 	return app_name;
 }
 
-#define TBM_EXYNOS_ERROR(fmt, args...)	LOGE("\033[31m"  "[%s] " fmt "\033[0m", target_name(), ##args)
-#define TBM_EXYNOS_DEBUG(fmt, args...)	{if (bDebug&01) LOGD("[%s] " fmt, target_name(), ##args); }
+#define TBM_BCM_ERROR(fmt, args...)	LOGE("\033[31m"  "[%s] " fmt "\033[0m", target_name(), ##args)
+#define TBM_BCM_DEBUG(fmt, args...)	{if (bDebug&01) LOGD("[%s] " fmt, target_name(), ##args); }
 #else
-#define TBM_EXYNOS_ERROR(...)
-#define TBM_EXYNOS_DEBUG(...)
+#define TBM_BCM_ERROR(...)
+#define TBM_BCM_DEBUG(...)
 #endif
 
 #define SIZE_ALIGN(value, base) (((value) + ((base) - 1)) & ~((base) - 1))
@@ -133,16 +134,16 @@ char *target_name()
 #define S5P_FIMV_NV12MT_VALIGN                  64
 
 /* check condition */
-#define EXYNOS_RETURN_IF_FAIL(cond) {\
+#define BCM_RETURN_IF_FAIL(cond) {\
 	if (!(cond)) {\
-		TBM_EXYNOS_ERROR("[%s] : '%s' failed.\n", __func__, #cond);\
+		TBM_BCM_ERROR("[%s] : '%s' failed.\n", __func__, #cond);\
 		return;\
 	} \
 }
 
-#define EXYNOS_RETURN_VAL_IF_FAIL(cond, val) {\
+#define BCM_RETURN_VAL_IF_FAIL(cond, val) {\
 	if (!(cond)) {\
-		TBM_EXYNOS_ERROR("[%s] : '%s' failed.\n", __func__, #cond);\
+		TBM_BCM_ERROR("[%s] : '%s' failed.\n", __func__, #cond);\
 		return val;\
 	} \
 }
@@ -198,16 +199,16 @@ union _tbm_bo_cache_state {
 	} data;
 };
 
-typedef struct _tbm_bufmgr_exynos *tbm_bufmgr_exynos;
-typedef struct _tbm_bo_exynos *tbm_bo_exynos;
+typedef struct _tbm_bufmgr_bcm *tbm_bufmgr_bcm;
+typedef struct _tbm_bo_bcm *tbm_bo_bcm;
 
-typedef struct _exynos_private {
+typedef struct _bcm_private {
 	int ref_count;
-	struct _tbm_bo_exynos *bo_priv;
+	struct _tbm_bo_bcm *bo_priv;
 } PrivGem;
 
 /* tbm buffor object for exynos */
-struct _tbm_bo_exynos {
+struct _tbm_bo_bcm {
 	int fd;
 
 	unsigned int name;    /* FLINK ID */
@@ -220,8 +221,7 @@ struct _tbm_bo_exynos {
 
 	unsigned int size;
 
-	unsigned int flags_exynos;
-	unsigned int flags_tbm;
+	unsigned int flags_tbm; /*not used now*//*currently no values for the flags,but it may be used in future extension*/
 
 	PrivGem *private;
 
@@ -236,7 +236,7 @@ struct _tbm_bo_exynos {
 };
 
 /* tbm bufmgr private for exynos */
-struct _tbm_bufmgr_exynos {
+struct _tbm_bufmgr_bcm {
 	int fd;
 	int isLocal;
 	void *hashBos;
@@ -265,13 +265,13 @@ char *STR_OPT[] = {
 };
 
 
-uint32_t tbm_exynos_color_format_list[TBM_COLOR_FORMAT_COUNT] = {
+uint32_t tbm_bcm_color_format_list[TBM_COLOR_FORMAT_COUNT] = {
 										TBM_FORMAT_ARGB8888,
 										TBM_FORMAT_XRGB8888,
 										TBM_FORMAT_NV12,
 										TBM_FORMAT_YUV420
 									};
-
+#undef  ENABLE_CACHECRTL
 #ifdef ENABLE_CACHECRTL
 #ifdef TGL_GET_VERSION
 static inline int
@@ -282,11 +282,11 @@ _tgl_get_version(int fd)
 
 	err = ioctl(fd, TGL_IOCTL_GET_VERSION, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) %s:%d\n", strerror(errno));
+		TBM_BCM_ERROR("error(%s) %s:%d\n", strerror(errno));
 		return 0;
 	}
 
-	TBM_EXYNOS_DEBUG("tgl version is (%u, %u).\n", data.major, data.minor);
+	TBM_BCM_DEBUG("tgl version is (%u, %u).\n", data.major, data.minor);
 
 	return 1;
 }
@@ -303,7 +303,7 @@ _tgl_init(int fd, unsigned int key)
 
 	err = ioctl(fd, TGL_IOCTL_REGISTER, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) key:%d\n", strerror(errno), key);
+		TBM_BCM_ERROR("error(%s) key:%d\n", strerror(errno), key);
 		return 0;
 	}
 
@@ -319,7 +319,7 @@ _tgl_destroy(int fd, unsigned int key)
 	data.key = key;
 	err = ioctl(fd, TGL_IOCTL_UNREGISTER, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) key:%d\n", strerror(errno), key);
+		TBM_BCM_ERROR("error(%s) key:%d\n", strerror(errno), key);
 		return 0;
 	}
 
@@ -350,7 +350,7 @@ _tgl_lock(int fd, unsigned int key, int opt)
 
 	err = ioctl(fd, TGL_IOCTL_LOCK, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) key:%d opt:%d\n",
+		TBM_BCM_ERROR("error(%s) key:%d opt:%d\n",
 			strerror(errno), key, opt);
 		return 0;
 	}
@@ -369,7 +369,7 @@ _tgl_unlock(int fd, unsigned int key)
 
 	err = ioctl(fd, TGL_IOCTL_UNLOCK, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
+		TBM_BCM_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
 		return 0;
 	}
@@ -388,7 +388,7 @@ _tgl_set_data(int fd, unsigned int key, unsigned int val)
 
 	err = ioctl(fd, TGL_IOCTL_SET_DATA, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
+		TBM_BCM_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
 		return 0;
 	}
@@ -406,7 +406,7 @@ _tgl_get_data(int fd, unsigned int key)
 
 	err = ioctl(fd, TGL_IOCTL_GET_DATA, &data);
 	if (err) {
-		TBM_EXYNOS_ERROR("error(%s) key:%d\n",
+		TBM_BCM_ERROR("error(%s) key:%d\n",
 			strerror(errno), key);
 		return 0;
 	}
@@ -415,22 +415,22 @@ _tgl_get_data(int fd, unsigned int key)
 }
 
 static int
-_exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, int flags)
+_exynos_cache_flush(tbm_bufmgr_bcm bufmgr_bcm, tbm_bo_bcm bo_bcm, int flags)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
 	/* cache flush is managed by kernel side when using dma-fence. */
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return 1;
 
 	struct drm_exynos_gem_cache_op cache_op = {0, };
 	int ret;
 
-	/* if bo_exynos is null, do cache_flush_all */
-	if (bo_exynos) {
+	/* if bo_bcm is null, do cache_flush_all */
+	if (bo_bcm) {
 		cache_op.flags = 0;
-		cache_op.usr_addr = (uint64_t)((uint32_t)bo_exynos->pBase);
-		cache_op.size = bo_exynos->size;
+		cache_op.usr_addr = (uint64_t)((uint32_t)bo_bcm->pBase);
+		cache_op.size = bo_bcm->size;
 	} else {
 		flags = TBM_EXYNOS_CACHE_FLUSH_ALL;
 		cache_op.flags = 0;
@@ -455,10 +455,10 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 	if (flags & TBM_EXYNOS_CACHE_ALL)
 		cache_op.flags |= EXYNOS_DRM_ALL_CACHES_CORES;
 
-	ret = drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op,
+	ret = drmCommandWriteRead(bufmgr_bcm->fd, DRM_EXYNOS_GEM_CACHE_OP, &cache_op,
 				  sizeof(cache_op));
 	if (ret) {
-		TBM_EXYNOS_ERROR("fail to flush the cache.\n");
+		TBM_BCM_ERROR("fail to flush the cache.\n");
 		return 0;
 	}
 
@@ -467,16 +467,16 @@ _exynos_cache_flush(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 #endif
 
 static int
-_bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, int import)
+_bo_init_cache_state(tbm_bufmgr_bcm bufmgr_bcm, tbm_bo_bcm bo_bcm, int import)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return 1;
 
-	_tgl_init(bufmgr_exynos->tgl_fd, bo_exynos->name);
+	_tgl_init(bufmgr_bcm->tgl_fd, bo_bcm->name);
 
 	tbm_bo_cache_state cache_state;
 
@@ -485,7 +485,7 @@ _bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, i
 		cache_state.data.isCached = 0;
 		cache_state.data.cntFlush = 0;
 
-		_tgl_set_data(bufmgr_exynos->tgl_fd, bo_exynos->name, cache_state.val);
+		_tgl_set_data(bufmgr_bcm->tgl_fd, bo_bcm->name, cache_state.val);
 	}
 #endif
 
@@ -493,64 +493,61 @@ _bo_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, i
 }
 
 static int
-_bo_set_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, int device, int opt)
+_bo_set_cache_state(tbm_bufmgr_bcm bufmgr_bcm, tbm_bo_bcm bo_bcm, int device, int opt)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return 1;
 
 	char need_flush = 0;
 	unsigned short cntFlush = 0;
 
-	if (!(bo_exynos->flags_exynos & EXYNOS_BO_CACHABLE))
-		return 1;
-
 	/* get cache state of a bo */
-	bo_exynos->cache_state.val = _tgl_get_data(bufmgr_exynos->tgl_fd,
-				     bo_exynos->name);
+	bo_bcm->cache_state.val = _tgl_get_data(bufmgr_bcm->tgl_fd,
+				     bo_bcm->name);
 
 	/* get global cache flush count */
-	cntFlush = (unsigned short)_tgl_get_data(bufmgr_exynos->tgl_fd, GLOBAL_KEY);
+	cntFlush = (unsigned short)_tgl_get_data(bufmgr_bcm->tgl_fd, GLOBAL_KEY);
 
 	if (device == TBM_DEVICE_CPU) {
-		if (bo_exynos->cache_state.data.isDirtied == DEVICE_CO &&
-		    bo_exynos->cache_state.data.isCached)
+		if (bo_bcm->cache_state.data.isDirtied == DEVICE_CO &&
+		    bo_bcm->cache_state.data.isCached)
 			need_flush = TBM_EXYNOS_CACHE_INV;
 
-		bo_exynos->cache_state.data.isCached = 1;
+		bo_bcm->cache_state.data.isCached = 1;
 		if (opt & TBM_OPTION_WRITE)
-			bo_exynos->cache_state.data.isDirtied = DEVICE_CA;
+			bo_bcm->cache_state.data.isDirtied = DEVICE_CA;
 		else {
-			if (bo_exynos->cache_state.data.isDirtied != DEVICE_CA)
-				bo_exynos->cache_state.data.isDirtied = DEVICE_NONE;
+			if (bo_bcm->cache_state.data.isDirtied != DEVICE_CA)
+				bo_bcm->cache_state.data.isDirtied = DEVICE_NONE;
 		}
 	} else {
-		if (bo_exynos->cache_state.data.isDirtied == DEVICE_CA &&
-		    bo_exynos->cache_state.data.isCached &&
-		    bo_exynos->cache_state.data.cntFlush == cntFlush)
+		if (bo_bcm->cache_state.data.isDirtied == DEVICE_CA &&
+		    bo_bcm->cache_state.data.isCached &&
+		    bo_bcm->cache_state.data.cntFlush == cntFlush)
 			need_flush = TBM_EXYNOS_CACHE_CLN | TBM_EXYNOS_CACHE_ALL;
 
 		if (opt & TBM_OPTION_WRITE)
-			bo_exynos->cache_state.data.isDirtied = DEVICE_CO;
+			bo_bcm->cache_state.data.isDirtied = DEVICE_CO;
 		else {
-			if (bo_exynos->cache_state.data.isDirtied != DEVICE_CO)
-				bo_exynos->cache_state.data.isDirtied = DEVICE_NONE;
+			if (bo_bcm->cache_state.data.isDirtied != DEVICE_CO)
+				bo_bcm->cache_state.data.isDirtied = DEVICE_NONE;
 		}
 	}
 
 	if (need_flush) {
 		if (need_flush & TBM_EXYNOS_CACHE_ALL)
-			_tgl_set_data(bufmgr_exynos->tgl_fd, GLOBAL_KEY, (unsigned int)(++cntFlush));
+			_tgl_set_data(bufmgr_bcm->tgl_fd, GLOBAL_KEY, (unsigned int)(++cntFlush));
 
 		/* call cache flush */
-		_exynos_cache_flush(bufmgr_exynos, bo_exynos, need_flush);
+		_exynos_cache_flush(bufmgr_bcm, bo_bcm, need_flush);
 
-		TBM_EXYNOS_DEBUG(" \tcache(%d,%d)....flush:0x%x, cntFlush(%d)\n",
-		    bo_exynos->cache_state.data.isCached,
-		    bo_exynos->cache_state.data.isDirtied,
+		TBM_BCM_DEBUG(" \tcache(%d,%d)....flush:0x%x, cntFlush(%d)\n",
+		    bo_bcm->cache_state.data.isCached,
+		    bo_bcm->cache_state.data.isDirtied,
 		    need_flush,
 		    cntFlush);
 	}
@@ -560,75 +557,75 @@ _bo_set_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos, in
 }
 
 static int
-_bo_save_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos)
+_bo_save_cache_state(tbm_bufmgr_bcm bufmgr_bcm, tbm_bo_bcm bo_bcm)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return 1;
 
 	unsigned short cntFlush = 0;
 
 	/* get global cache flush count */
-	cntFlush = (unsigned short)_tgl_get_data(bufmgr_exynos->tgl_fd, GLOBAL_KEY);
+	cntFlush = (unsigned short)_tgl_get_data(bufmgr_bcm->tgl_fd, GLOBAL_KEY);
 
 	/* save global cache flush count */
-	bo_exynos->cache_state.data.cntFlush = cntFlush;
-	_tgl_set_data(bufmgr_exynos->tgl_fd, bo_exynos->name,
-		      bo_exynos->cache_state.val);
+	bo_bcm->cache_state.data.cntFlush = cntFlush;
+	_tgl_set_data(bufmgr_bcm->tgl_fd, bo_bcm->name,
+		      bo_bcm->cache_state.val);
 #endif
 
 	return 1;
 }
 
 static void
-_bo_destroy_cache_state(tbm_bufmgr_exynos bufmgr_exynos, tbm_bo_exynos bo_exynos)
+_bo_destroy_cache_state(tbm_bufmgr_bcm bufmgr_bcm, tbm_bo_bcm bo_bcm)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_IF_FAIL(bufmgr_exynos != NULL);
-	EXYNOS_RETURN_IF_FAIL(bo_exynos != NULL);
+	BCM_RETURN_IF_FAIL(bufmgr_bcm != NULL);
+	BCM_RETURN_IF_FAIL(bo_bcm != NULL);
 
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return ;
 
-	_tgl_destroy(bufmgr_exynos->tgl_fd, bo_exynos->name);
+	_tgl_destroy(bufmgr_bcm->tgl_fd, bo_bcm->name);
 #endif
 }
 
 static int
-_bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
+_bufmgr_init_cache_state(tbm_bufmgr_bcm bufmgr_bcm)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return 1;
 
 	/* open tgl fd for saving cache flush data */
-	bufmgr_exynos->tgl_fd = open(tgl_devfile, O_RDWR);
+	bufmgr_bcm->tgl_fd = open(tgl_devfile, O_RDWR);
 
-	if (bufmgr_exynos->tgl_fd < 0) {
-	    bufmgr_exynos->tgl_fd = open(tgl_devfile1, O_RDWR);
-	    if (bufmgr_exynos->tgl_fd < 0) {
-		    TBM_EXYNOS_ERROR("fail to open global_lock:%s\n",
+	if (bufmgr_bcm->tgl_fd < 0) {
+	    bufmgr_bcm->tgl_fd = open(tgl_devfile1, O_RDWR);
+	    if (bufmgr_bcm->tgl_fd < 0) {
+		    TBM_BCM_ERROR("fail to open global_lock:%s\n",
 					tgl_devfile1);
 		    return 0;
 	    }
 	}
 
 #ifdef TGL_GET_VERSION
-	if (!_tgl_get_version(bufmgr_exynos->tgl_fd)) {
-		TBM_EXYNOS_ERROR("fail to get tgl_version. tgl init failed.\n");
+	if (!_tgl_get_version(bufmgr_bcm->tgl_fd)) {
+		TBM_BCM_ERROR("fail to get tgl_version. tgl init failed.\n");
 		close(bufmgr_sprd->tgl_fd);
 		return 0;
 	}
 #endif
 
-	if (!_tgl_init(bufmgr_exynos->tgl_fd, GLOBAL_KEY)) {
-		TBM_EXYNOS_ERROR("fail to initialize the tgl\n");
-		close(bufmgr_exynos->tgl_fd);
+	if (!_tgl_init(bufmgr_bcm->tgl_fd, GLOBAL_KEY)) {
+		TBM_BCM_ERROR("fail to initialize the tgl\n");
+		close(bufmgr_bcm->tgl_fd);
 		return 0;
 	}
 #endif
@@ -637,27 +634,27 @@ _bufmgr_init_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
 }
 
 static void
-_bufmgr_deinit_cache_state(tbm_bufmgr_exynos bufmgr_exynos)
+_bufmgr_deinit_cache_state(tbm_bufmgr_bcm bufmgr_bcm)
 {
 #ifdef ENABLE_CACHECRTL
-	EXYNOS_RETURN_IF_FAIL(bufmgr_exynos != NULL);
+	BCM_RETURN_IF_FAIL(bufmgr_bcm != NULL);
 
-	if (bufmgr_exynos->use_dma_fence)
+	if (bufmgr_bcm->use_dma_fence)
 		return;
 
-	if (bufmgr_exynos->tgl_fd >= 0)
-		close(bufmgr_exynos->tgl_fd);
+	if (bufmgr_bcm->tgl_fd >= 0)
+		close(bufmgr_bcm->tgl_fd);
 #endif
 }
 
 static int
-_tbm_exynos_open_drm()
+_tbm_bcm_open_drm()
 {
 	int fd = -1;
 
-	fd = drmOpen(EXYNOS_DRM_NAME, NULL);
+	fd = drmOpen(BCM_DRM_NAME, NULL);
 	if (fd < 0) {
-		TBM_EXYNOS_ERROR("fail to open drm.(%s)\n", EXYNOS_DRM_NAME);
+		TBM_BCM_ERROR("fail to open drm.(%s)\n", BCM_DRM_NAME);
 	}
 
 	if (fd < 0) {
@@ -669,11 +666,11 @@ _tbm_exynos_open_drm()
 		struct stat s;
 		int ret;
 
-		TBM_EXYNOS_DEBUG("search drm-device by udev\n");
+		TBM_BCM_DEBUG("search drm-device by udev\n");
 
 		udev = udev_new();
 		if (!udev) {
-			TBM_EXYNOS_ERROR("udev_new() failed.\n");
+			TBM_BCM_ERROR("udev_new() failed.\n");
 			return -1;
 		}
 
@@ -690,7 +687,7 @@ _tbm_exynos_open_drm()
 			if (device_parent) {
 				if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 					drm_device = device;
-					TBM_EXYNOS_DEBUG("[%s] Found render device: '%s' (%s)\n",
+					TBM_BCM_DEBUG("[%s] Found render device: '%s' (%s)\n",
 					    target_name(),
 					    udev_device_get_syspath(drm_device),
 					    udev_device_get_sysname(device_parent));
@@ -705,7 +702,7 @@ _tbm_exynos_open_drm()
 		/* Get device file path. */
 		filepath = udev_device_get_devnode(drm_device);
 		if (!filepath) {
-			TBM_EXYNOS_ERROR("udev_device_get_devnode() failed.\n");
+			TBM_BCM_ERROR("udev_device_get_devnode() failed.\n");
 			udev_device_unref(drm_device);
 			udev_unref(udev);
 			return -1;
@@ -714,7 +711,7 @@ _tbm_exynos_open_drm()
 		/* Open DRM device file and check validity. */
 		fd = open(filepath, O_RDWR | O_CLOEXEC);
 		if (fd < 0) {
-			TBM_EXYNOS_ERROR("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+			TBM_BCM_ERROR("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
 			udev_device_unref(drm_device);
 			udev_unref(udev);
 			return -1;
@@ -722,7 +719,7 @@ _tbm_exynos_open_drm()
 
 		ret = fstat(fd, &s);
 		if (ret) {
-			TBM_EXYNOS_ERROR("fstat() failed %s.\n");
+			TBM_BCM_ERROR("fstat() failed %s.\n");
 			close(fd);
 			udev_device_unref(drm_device);
 			udev_unref(udev);
@@ -737,7 +734,7 @@ _tbm_exynos_open_drm()
 }
 
 static int
-_check_render_node(void)
+_check_render_node(void)  //TODO
 {
 	struct udev *udev = NULL;
 	struct udev_enumerate *e = NULL;
@@ -750,7 +747,7 @@ _check_render_node(void)
 
 	udev = udev_new();
 	if (!udev) {
-		TBM_EXYNOS_ERROR("udev_new() failed.\n");
+		TBM_BCM_ERROR("udev_new() failed.\n");
 		return -1;
 	}
 
@@ -767,7 +764,7 @@ _check_render_node(void)
 		if (device_parent) {
 			if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 				drm_device = device;
-				TBM_EXYNOS_DEBUG("Found render device: '%s' (%s)\n",
+				TBM_BCM_DEBUG("Found render device: '%s' (%s)\n",
 				    udev_device_get_syspath(drm_device),
 				    udev_device_get_sysname(device_parent));
 				break;
@@ -789,7 +786,7 @@ _check_render_node(void)
 }
 
 static int
-_get_render_node(void)
+_get_render_node(void)//TODO
 {
 	struct udev *udev = NULL;
 	struct udev_enumerate *e = NULL;
@@ -802,7 +799,7 @@ _get_render_node(void)
 
 	udev = udev_new();
 	if (!udev) {
-		TBM_EXYNOS_ERROR("udev_new() failed.\n");
+		TBM_BCM_ERROR("udev_new() failed.\n");
 		return -1;
 	}
 
@@ -819,7 +816,7 @@ _get_render_node(void)
 		if (device_parent) {
 			if (strcmp(udev_device_get_sysname(device_parent), "exynos-drm") == 0) {
 				drm_device = device;
-				TBM_EXYNOS_DEBUG("Found render device: '%s' (%s)\n",
+				TBM_BCM_DEBUG("Found render device: '%s' (%s)\n",
 				    udev_device_get_syspath(drm_device),
 				    udev_device_get_sysname(device_parent));
 				break;
@@ -833,7 +830,7 @@ _get_render_node(void)
 	/* Get device file path. */
 	filepath = udev_device_get_devnode(drm_device);
 	if (!filepath) {
-		TBM_EXYNOS_ERROR("udev_device_get_devnode() failed.\n");
+		TBM_BCM_ERROR("udev_device_get_devnode() failed.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 		return -1;
@@ -842,7 +839,7 @@ _get_render_node(void)
 	/* Open DRM device file and check validity. */
 	fd = open(filepath, O_RDWR | O_CLOEXEC);
 	if (fd < 0) {
-		TBM_EXYNOS_ERROR("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+		TBM_BCM_ERROR("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 		return -1;
@@ -850,7 +847,7 @@ _get_render_node(void)
 
 	ret = fstat(fd, &s);
 	if (ret) {
-		TBM_EXYNOS_ERROR("fstat() failed %s.\n");
+		TBM_BCM_ERROR("fstat() failed %s.\n");
 		udev_device_unref(drm_device);
 		udev_unref(udev);
 		close(fd);
@@ -864,53 +861,13 @@ _get_render_node(void)
 }
 
 static unsigned int
-_get_exynos_flag_from_tbm(unsigned int ftbm)
-{
-	unsigned int flags = 0;
-
-	if (ftbm & TBM_BO_SCANOUT)
-		flags |= EXYNOS_BO_CONTIG;
-	else
-		flags |= EXYNOS_BO_NONCONTIG;
-
-	if (ftbm & TBM_BO_WC)
-		flags |= EXYNOS_BO_WC;
-	else if (ftbm & TBM_BO_NONCACHABLE)
-		flags |= EXYNOS_BO_NONCACHABLE;
-	else
-		flags |= EXYNOS_BO_CACHABLE;
-
-	return flags;
-}
-
-static unsigned int
-_get_tbm_flag_from_exynos(unsigned int fexynos)
-{
-	unsigned int flags = 0;
-
-	if (fexynos & EXYNOS_BO_NONCONTIG)
-		flags |= TBM_BO_DEFAULT;
-	else
-		flags |= TBM_BO_SCANOUT;
-
-	if (fexynos & EXYNOS_BO_WC)
-		flags |= TBM_BO_WC;
-	else if (fexynos & EXYNOS_BO_CACHABLE)
-		flags |= TBM_BO_DEFAULT;
-	else
-		flags |= TBM_BO_NONCACHABLE;
-
-	return flags;
-}
-
-static unsigned int
 _get_name(int fd, unsigned int gem)
 {
 	struct drm_gem_flink arg = {0,};
 
 	arg.handle = gem;
 	if (drmIoctl(fd, DRM_IOCTL_GEM_FLINK, &arg)) {
-		TBM_EXYNOS_ERROR("fail to DRM_IOCTL_GEM_FLINK gem:%d", gem);
+		TBM_BCM_ERROR("fail to DRM_IOCTL_GEM_FLINK gem:%d", gem);
 		return 0;
 	}
 
@@ -918,7 +875,7 @@ _get_name(int fd, unsigned int gem)
 }
 
 static tbm_bo_handle
-_exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
+_bcm_bo_handle(tbm_bo_bcm bo_bcm, int device)
 {
 	tbm_bo_handle bo_handle;
 
@@ -927,67 +884,65 @@ _exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
 	switch (device) {
 	case TBM_DEVICE_DEFAULT:
 	case TBM_DEVICE_2D:
-		bo_handle.u32 = (uint32_t)bo_exynos->gem;
+		bo_handle.u32 = (uint32_t)bo_bcm->gem;
 		break;
 	case TBM_DEVICE_CPU:
-		if (!bo_exynos->pBase) {
-			struct drm_exynos_gem_map arg = {0,};
+		if (!bo_bcm->pBase) {
 			void *map = NULL;
-
-			arg.handle = bo_exynos->gem;
-			if (drmCommandWriteRead(bo_exynos->fd, DRM_EXYNOS_GEM_MAP, &arg,
-						sizeof(arg))) {
-				TBM_EXYNOS_ERROR("Cannot map_dumb gem=%d\n", bo_exynos->gem);
+			struct drm_vc4_mmap_bo arg = {0, };
+			arg.handle = bo_bcm->gem;
+			if (drmIoctl(bo_bcm->fd, DRM_IOCTL_VC4_MMAP_BO, &arg)){
+				TBM_BCM_ERROR("Cannot map_dumb gem=%d\n", bo_bcm->gem);
 				return (tbm_bo_handle) NULL;
 			}
 
-			map = mmap(NULL, bo_exynos->size, PROT_READ | PROT_WRITE, MAP_SHARED,
-				   bo_exynos->fd, arg.offset);
+			map = mmap(NULL, bo_bcm->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+				   bo_bcm->fd, arg.offset);
 			if (map == MAP_FAILED) {
-				TBM_EXYNOS_ERROR("Cannot usrptr gem=%d\n", bo_exynos->gem);
+				TBM_BCM_ERROR("Cannot usrptr gem=%d\n", bo_bcm->gem);
 				return (tbm_bo_handle) NULL;
 			}
-			bo_exynos->pBase = map;
+			bo_bcm->pBase = map;
 		}
-		bo_handle.ptr = (void *)bo_exynos->pBase;
+		bo_handle.ptr = (void *)bo_bcm->pBase;
 		break;
 	case TBM_DEVICE_3D:
 #ifdef USE_DMAIMPORT
-		if (bo_exynos->dmabuf) {
-			bo_handle.u32 = (uint32_t)bo_exynos->dmabuf;
+		if (bo_bcm->dmabuf) {
+			bo_handle.u32 = (uint32_t)bo_bcm->dmabuf;
 			break;
 		}
 
-		if (!bo_exynos->dmabuf) {
+		if (!bo_bcm->dmabuf) {
 			struct drm_prime_handle arg = {0, };
 
-			arg.handle = bo_exynos->gem;
-			if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-				TBM_EXYNOS_ERROR("Cannot dmabuf=%d\n", bo_exynos->gem);
+			arg.handle = bo_bcm->gem;
+			if (drmIoctl(bo_bcm->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
+				TBM_BCM_ERROR("Cannot dmabuf=%d\n", bo_bcm->gem);
 				return (tbm_bo_handle) NULL;
 			}
-			bo_exynos->dmabuf = arg.fd;
+			bo_bcm->dmabuf = arg.fd;
 		}
 
-		bo_handle.u32 = (uint32_t)bo_exynos->dmabuf;
+		bo_handle.u32 = (uint32_t)bo_bcm->dmabuf;
 #endif
 		break;
 	case TBM_DEVICE_MM:
-		if (!bo_exynos->dmabuf) {
+		if (!bo_bcm->dmabuf) {
 			struct drm_prime_handle arg = {0, };
 
-			arg.handle = bo_exynos->gem;
-			if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-				TBM_EXYNOS_ERROR("Cannot dmabuf=%d\n", bo_exynos->gem);
+			arg.handle = bo_bcm->gem;
+			if (drmIoctl(bo_bcm->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
+				TBM_BCM_ERROR("Cannot dmabuf=%d\n", bo_bcm->gem);
 				return (tbm_bo_handle) NULL;
 			}
-			bo_exynos->dmabuf = arg.fd;
+			bo_bcm->dmabuf = arg.fd;
 		}
 
-		bo_handle.u32 = (uint32_t)bo_exynos->dmabuf;
+		bo_handle.u32 = (uint32_t)bo_bcm->dmabuf;
 		break;
 	default:
-		TBM_EXYNOS_ERROR("Not supported device:%d\n", device);
+		TBM_BCM_ERROR("Not supported device:%d\n", device);
 		bo_handle.ptr = (void *) NULL;
 		break;
 	}
@@ -996,240 +951,219 @@ _exynos_bo_handle(tbm_bo_exynos bo_exynos, int device)
 }
 
 static int
-tbm_exynos_bo_size(tbm_bo bo)
+tbm_bcm_bo_size(tbm_bo bo)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bo_exynos bo_exynos;
+	tbm_bo_bcm bo_bcm;
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	return bo_exynos->size;
+	return bo_bcm->size;
 }
 
 static void *
-tbm_exynos_bo_alloc(tbm_bo bo, int size, int flags)
+tbm_bcm_bo_alloc(tbm_bo bo, int size, int flags)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bo_exynos bo_exynos;
-	tbm_bufmgr_exynos bufmgr_exynos;
-	unsigned int exynos_flags;
+	tbm_bo_bcm bo_bcm;
+	tbm_bufmgr_bcm bufmgr_bcm;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
-	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
-	if (!bo_exynos) {
-		TBM_EXYNOS_ERROR("fail to allocate the bo private\n");
+	bo_bcm = calloc(1, sizeof(struct _tbm_bo_bcm));
+	if (!bo_bcm) {
+		TBM_BCM_ERROR("fail to allocate the bo private\n");
 		return 0;
 	}
 
-	exynos_flags = _get_exynos_flag_from_tbm(flags);
-	if ((flags & TBM_BO_SCANOUT) &&
-	    size <= 4 * 1024) {
-		exynos_flags |= EXYNOS_BO_NONCONTIG;
-	}
-
-	struct drm_exynos_gem_create arg = {0, };
-
-	arg.size = (uint64_t)size;
-	arg.flags = exynos_flags;
-	if (drmCommandWriteRead(bufmgr_exynos->fd, DRM_EXYNOS_GEM_CREATE, &arg,
-				sizeof(arg))) {
-		TBM_EXYNOS_ERROR("Cannot create bo(flag:%x, size:%d)\n", arg.flags,
+	struct drm_vc4_create_bo arg = {0, };
+	arg.flags = flags;/*currently no values for the flags,but it may be used in future extension*/
+	arg.size = (__u32)size;
+	if (drmIoctl(bufmgr_bcm->fd, DRM_IOCTL_VC4_CREATE_BO, &arg)){
+		TBM_BCM_ERROR("Cannot create bo(flag:%x, size:%d)\n", arg.flags,
 			       (unsigned int)arg.size);
-		free(bo_exynos);
+		free(bo_bcm);
 		return 0;
 	}
 
-	bo_exynos->fd = bufmgr_exynos->fd;
-	bo_exynos->gem = arg.handle;
-	bo_exynos->size = size;
-	bo_exynos->flags_tbm = flags;
-	bo_exynos->flags_exynos = exynos_flags;
-	bo_exynos->name = _get_name(bo_exynos->fd, bo_exynos->gem);
+	bo_bcm->fd = bufmgr_bcm->fd;
+	bo_bcm->gem = (unsigned int)arg.handle;
+	bo_bcm->size = size;
+	bo_bcm->flags_tbm = flags;
+	bo_bcm->name = _get_name(bo_bcm->fd, bo_bcm->gem);
 
-	if (!_bo_init_cache_state(bufmgr_exynos, bo_exynos, 0)) {
-		TBM_EXYNOS_ERROR("fail init cache state(%d)\n", bo_exynos->name);
-		free(bo_exynos);
+	if (!_bo_init_cache_state(bufmgr_bcm, bo_bcm, 0)) {
+		TBM_BCM_ERROR("fail init cache state(%d)\n", bo_bcm->name);
+		free(bo_bcm);
 		return 0;
 	}
 
-	pthread_mutex_init(&bo_exynos->mutex, NULL);
+	pthread_mutex_init(&bo_bcm->mutex, NULL);
 
-	if (bufmgr_exynos->use_dma_fence
-	    && !bo_exynos->dmabuf) {
+	if (bufmgr_bcm->use_dma_fence
+	    && !bo_bcm->dmabuf) {
 		struct drm_prime_handle arg = {0, };
 
-		arg.handle = bo_exynos->gem;
-		if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-			TBM_EXYNOS_ERROR("Cannot dmabuf=%d\n", bo_exynos->gem);
-			free(bo_exynos);
+		arg.handle = bo_bcm->gem;
+		if (drmIoctl(bo_bcm->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
+			TBM_BCM_ERROR("Cannot dmabuf=%d\n", bo_bcm->gem);
+			free(bo_bcm);
 			return 0;
 		}
-		bo_exynos->dmabuf = arg.fd;
+		bo_bcm->dmabuf = arg.fd;
 	}
 
 	/* add bo to hash */
 	PrivGem *privGem = calloc(1, sizeof(PrivGem));
 
 	if (!privGem) {
-		TBM_EXYNOS_ERROR("fail to calloc privGem\n");
-		free(bo_exynos);
+		TBM_BCM_ERROR("fail to calloc privGem\n");
+		free(bo_bcm);
 		return 0;
 	}
 
 	privGem->ref_count = 1;
-	privGem->bo_priv = bo_exynos;
+	privGem->bo_priv = bo_bcm;
 
-	if (drmHashInsert(bufmgr_exynos->hashBos, bo_exynos->name,
+	if (drmHashInsert(bufmgr_bcm->hashBos, bo_bcm->name,
 			  (void *)privGem) < 0) {
-		TBM_EXYNOS_ERROR("Cannot insert bo to Hash(%d)\n", bo_exynos->name);
+		TBM_BCM_ERROR("Cannot insert bo to Hash(%d)\n", bo_bcm->name);
 	}
 
-	TBM_EXYNOS_DEBUG("     bo:%p, gem:%d(%d), flags:%d(%d), size:%d\n",
+	TBM_BCM_DEBUG("     bo:%p, gem:%d(%d), flags:%d, size:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    flags, exynos_flags,
-	    bo_exynos->size);
+	    bo_bcm->gem, bo_bcm->name,
+	    flags,
+	    bo_bcm->size);
 
-	return (void *)bo_exynos;
+	return (void *)bo_bcm;
 }
 
 static void
-tbm_exynos_bo_free(tbm_bo bo)
+tbm_bcm_bo_free(tbm_bo bo)
 {
-	tbm_bo_exynos bo_exynos;
-	tbm_bufmgr_exynos bufmgr_exynos;
+	tbm_bo_bcm bo_bcm;
+	tbm_bufmgr_bcm bufmgr_bcm;
 
 	if (!bo)
 		return;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_IF_FAIL(bufmgr_exynos != NULL);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_IF_FAIL(bufmgr_bcm != NULL);
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_IF_FAIL(bo_exynos != NULL);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_IF_FAIL(bo_bcm != NULL);
 
-	TBM_EXYNOS_DEBUG("      bo:%p, gem:%d(%d), fd:%d, size:%d\n",
+	TBM_BCM_DEBUG("      bo:%p, gem:%d(%d), fd:%d, size:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
-	    bo_exynos->size);
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
+	    bo_bcm->size);
 
-	if (bo_exynos->pBase) {
-		if (munmap(bo_exynos->pBase, bo_exynos->size) == -1) {
-			TBM_EXYNOS_ERROR("bo:%p fail to munmap(%s)\n",
+	if (bo_bcm->pBase) {
+		if (munmap(bo_bcm->pBase, bo_bcm->size) == -1) {
+			TBM_BCM_ERROR("bo:%p fail to munmap(%s)\n",
 				       bo, strerror(errno));
 		}
 	}
 
 	/* close dmabuf */
-	if (bo_exynos->dmabuf) {
-		close(bo_exynos->dmabuf);
-		bo_exynos->dmabuf = 0;
+	if (bo_bcm->dmabuf) {
+		close(bo_bcm->dmabuf);
+		bo_bcm->dmabuf = 0;
 	}
 
 	/* delete bo from hash */
 	PrivGem *privGem = NULL;
 	int ret;
 
-	ret = drmHashLookup(bufmgr_exynos->hashBos, bo_exynos->name,
+	ret = drmHashLookup(bufmgr_bcm->hashBos, bo_bcm->name,
 			     (void **)&privGem);
 	if (ret == 0) {
 		privGem->ref_count--;
 		if (privGem->ref_count == 0) {
-			drmHashDelete(bufmgr_exynos->hashBos, bo_exynos->name);
+			drmHashDelete(bufmgr_bcm->hashBos, bo_bcm->name);
 			free(privGem);
 			privGem = NULL;
 		}
 	} else {
-		TBM_EXYNOS_ERROR("Cannot find bo to Hash(%d), ret=%d\n",
-			bo_exynos->name, ret);
+		TBM_BCM_ERROR("Cannot find bo to Hash(%d), ret=%d\n",
+			bo_bcm->name, ret);
 	}
 
-	_bo_destroy_cache_state(bufmgr_exynos, bo_exynos);
+	_bo_destroy_cache_state(bufmgr_bcm, bo_bcm);
 
 	/* Free gem handle */
 	struct drm_gem_close arg = {0, };
 
 	memset(&arg, 0, sizeof(arg));
-	arg.handle = bo_exynos->gem;
-	if (drmIoctl(bo_exynos->fd, DRM_IOCTL_GEM_CLOSE, &arg)) {
-		TBM_EXYNOS_ERROR("bo:%p fail to gem close.(%s)\n",
+	arg.handle = bo_bcm->gem;
+	if (drmIoctl(bo_bcm->fd, DRM_IOCTL_GEM_CLOSE, &arg)) {
+		TBM_BCM_ERROR("bo:%p fail to gem close.(%s)\n",
 			       bo, strerror(errno));
 	}
 
-	free(bo_exynos);
+	free(bo_bcm);
 }
 
 
 static void *
-tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
+tbm_bcm_bo_import(tbm_bo bo, unsigned int key)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bufmgr_exynos bufmgr_exynos;
-	tbm_bo_exynos bo_exynos;
+	tbm_bufmgr_bcm bufmgr_bcm;
+	tbm_bo_bcm bo_bcm;
 	PrivGem *privGem = NULL;
 	int ret;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
-	ret = drmHashLookup(bufmgr_exynos->hashBos, key, (void **)&privGem);
+	ret = drmHashLookup(bufmgr_bcm->hashBos, key, (void **)&privGem);
 	if (ret == 0)
 		return privGem->bo_priv;
 
 	struct drm_gem_open arg = {0, };
-	struct drm_exynos_gem_info info = {0, };
 
 	arg.name = key;
-	if (drmIoctl(bufmgr_exynos->fd, DRM_IOCTL_GEM_OPEN, &arg)) {
-		TBM_EXYNOS_ERROR("Cannot open gem name=%d\n", key);
+	if (drmIoctl(bufmgr_bcm->fd, DRM_IOCTL_GEM_OPEN, &arg)) {
+		TBM_BCM_ERROR("Cannot open gem name=%d\n", key);
 		return 0;
 	}
 
-	info.handle = arg.handle;
-	if (drmCommandWriteRead(bufmgr_exynos->fd,
-				DRM_EXYNOS_GEM_GET,
-				&info,
-				sizeof(struct drm_exynos_gem_info))) {
-		TBM_EXYNOS_ERROR("Cannot get gem info=%d\n", key);
+	bo_bcm = calloc(1, sizeof(struct _tbm_bo_bcm));
+	if (!bo_bcm) {
+		TBM_BCM_ERROR("fail to allocate the bo private\n");
 		return 0;
 	}
 
-	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
-	if (!bo_exynos) {
-		TBM_EXYNOS_ERROR("fail to allocate the bo private\n");
+	bo_bcm->fd = bufmgr_bcm->fd;
+	bo_bcm->gem = arg.handle;
+	bo_bcm->size = arg.size;
+	bo_bcm->name = key;
+	bo_bcm->flags_tbm = 0;
+
+	if (!_bo_init_cache_state(bufmgr_bcm, bo_bcm, 1)) {
+		TBM_BCM_ERROR("fail init cache state(%d)\n", bo_bcm->name);
+		free(bo_bcm);
 		return 0;
 	}
 
-	bo_exynos->fd = bufmgr_exynos->fd;
-	bo_exynos->gem = arg.handle;
-	bo_exynos->size = arg.size;
-	bo_exynos->flags_exynos = info.flags;
-	bo_exynos->name = key;
-	bo_exynos->flags_tbm = _get_tbm_flag_from_exynos(bo_exynos->flags_exynos);
-
-	if (!_bo_init_cache_state(bufmgr_exynos, bo_exynos, 1)) {
-		TBM_EXYNOS_ERROR("fail init cache state(%d)\n", bo_exynos->name);
-		free(bo_exynos);
-		return 0;
-	}
-
-	if (!bo_exynos->dmabuf) {
+	if (!bo_bcm->dmabuf) {
 		struct drm_prime_handle arg = {0, };
 
-		arg.handle = bo_exynos->gem;
-		if (drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
-			TBM_EXYNOS_ERROR("fail to DRM_IOCTL_PRIME_HANDLE_TO_FD gem=%d\n", bo_exynos->gem);
-			free(bo_exynos);
+		arg.handle = bo_bcm->gem;
+		if (drmIoctl(bo_bcm->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg)) {
+			TBM_BCM_ERROR("fail to DRM_IOCTL_PRIME_HANDLE_TO_FD gem=%d\n", bo_bcm->gem);
+			free(bo_bcm);
 			return 0;
 		}
-		bo_exynos->dmabuf = arg.fd;
+		bo_bcm->dmabuf = arg.fd;
 	}
 
 	/* add bo to hash */
@@ -1237,42 +1171,42 @@ tbm_exynos_bo_import(tbm_bo bo, unsigned int key)
 
 	privGem = calloc(1, sizeof(PrivGem));
 	if (!privGem) {
-		TBM_EXYNOS_ERROR("fail to calloc privGem\n");
-		free(bo_exynos);
+		TBM_BCM_ERROR("fail to calloc privGem\n");
+		free(bo_bcm);
 		return 0;
 	}
 
 	privGem->ref_count = 1;
-	privGem->bo_priv = bo_exynos;
+	privGem->bo_priv = bo_bcm;
 
-	if (drmHashInsert(bufmgr_exynos->hashBos, bo_exynos->name,
+	if (drmHashInsert(bufmgr_bcm->hashBos, bo_bcm->name,
 			   (void *)privGem) < 0) {
-		TBM_EXYNOS_ERROR("Cannot insert bo to Hash(%d)\n", bo_exynos->name);
+		TBM_BCM_ERROR("Cannot insert bo to Hash(%d)\n", bo_bcm->name);
 	}
 
-	TBM_EXYNOS_DEBUG("    bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
+	TBM_BCM_DEBUG("    bo:%p, gem:%d(%d), fd:%d, flags:%d, size:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
-	    bo_exynos->flags_tbm, bo_exynos->flags_exynos,
-	    bo_exynos->size);
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
+	    bo_bcm->flags_tbm,
+	    bo_bcm->size);
 
-	return (void *)bo_exynos;
+	return (void *)bo_bcm;
 }
 
 static void *
-tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
+tbm_bcm_bo_import_fd(tbm_bo bo, tbm_fd key)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bufmgr_exynos bufmgr_exynos;
-	tbm_bo_exynos bo_exynos;
+	tbm_bufmgr_bcm bufmgr_bcm;
+	tbm_bo_bcm bo_bcm;
 	PrivGem *privGem = NULL;
 	unsigned int name;
 	int ret;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
 	/*getting handle from fd*/
 	unsigned int gem = 0;
@@ -1280,28 +1214,28 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	arg.fd = key;
 	arg.flags = 0;
-	if (drmIoctl(bufmgr_exynos->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg)) {
-		TBM_EXYNOS_ERROR("bo:%p Cannot get gem handle from fd:%d (%s)\n",
+	if (drmIoctl(bufmgr_bcm->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg)) {
+		TBM_BCM_ERROR("bo:%p Cannot get gem handle from fd:%d (%s)\n",
 			       bo, arg.fd, strerror(errno));
 		return NULL;
 	}
 	gem = arg.handle;
 
-	name = _get_name(bufmgr_exynos->fd, gem);
+	name = _get_name(bufmgr_bcm->fd, gem);
 	if (!name) {
-		TBM_EXYNOS_ERROR("bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
+		TBM_BCM_ERROR("bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
 			       bo, gem, key, strerror(errno));
 		return 0;
 	}
 
-	ret = drmHashLookup(bufmgr_exynos->hashBos, name, (void **)&privGem);
+	ret = drmHashLookup(bufmgr_bcm->hashBos, name, (void **)&privGem);
 	if (ret == 0) {
 		if (gem == privGem->bo_priv->gem)
 			return privGem->bo_priv;
 	}
 
 	unsigned int real_size = -1;
-	struct drm_exynos_gem_info info = {0, };
+	//struct drm_exynos_gem_info info = {0, };
 
 	/* Determine size of bo.  The fd-to-handle ioctl really should
 	 * return the size, but it doesn't.  If we have kernel 3.12 or
@@ -1311,35 +1245,42 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 	 */
 	real_size = lseek(key, 0, SEEK_END);
 
-	info.handle = gem;
-	if (drmCommandWriteRead(bufmgr_exynos->fd,
+	/*info.handle = gem;
+	if (drmCommandWriteRead(bufmgr_bcm->fd,
 				DRM_EXYNOS_GEM_GET,
 				&info,
 				sizeof(struct drm_exynos_gem_info))) {
-		TBM_EXYNOS_ERROR("bo:%p Cannot get gem info from gem:%d, fd:%d (%s)\n",
+		TBM_BCM_ERROR("bo:%p Cannot get gem info from gem:%d, fd:%d (%s)\n",
 			       bo, gem, key, strerror(errno));
+		return 0;
+	}*/
+
+	struct drm_gem_open open_arg = {0, };
+
+	open_arg.name = name;
+	if (drmIoctl(bufmgr_bcm->fd, DRM_IOCTL_GEM_OPEN, &open_arg)) {
+		TBM_BCM_ERROR("Cannot open gem name=%d\n", name);
 		return 0;
 	}
 
 	if (real_size == -1)
-		real_size = info.size;
+		real_size = open_arg.size;
 
-	bo_exynos = calloc(1, sizeof(struct _tbm_bo_exynos));
-	if (!bo_exynos) {
-		TBM_EXYNOS_ERROR("bo:%p fail to allocate the bo private\n", bo);
+	bo_bcm = calloc(1, sizeof(struct _tbm_bo_bcm));
+	if (!bo_bcm) {
+		TBM_BCM_ERROR("bo:%p fail to allocate the bo private\n", bo);
 		return 0;
 	}
 
-	bo_exynos->fd = bufmgr_exynos->fd;
-	bo_exynos->gem = gem;
-	bo_exynos->size = real_size;
-	bo_exynos->flags_exynos = info.flags;
-	bo_exynos->flags_tbm = _get_tbm_flag_from_exynos(bo_exynos->flags_exynos);
-	bo_exynos->name = name;
+	bo_bcm->fd = bufmgr_bcm->fd;
+	bo_bcm->gem = gem;
+	bo_bcm->size = real_size;
+	bo_bcm->flags_tbm = 0;
+	bo_bcm->name = name;
 
-	if (!_bo_init_cache_state(bufmgr_exynos, bo_exynos, 1)) {
-		TBM_EXYNOS_ERROR("fail init cache state(%d)\n", bo_exynos->name);
-		free(bo_exynos);
+	if (!_bo_init_cache_state(bufmgr_bcm, bo_bcm, 1)) {
+		TBM_BCM_ERROR("fail init cache state(%d)\n", bo_bcm->name);
+		free(bo_bcm);
 		return 0;
 	}
 
@@ -1348,120 +1289,120 @@ tbm_exynos_bo_import_fd(tbm_bo bo, tbm_fd key)
 
 	privGem = calloc(1, sizeof(PrivGem));
 	if (!privGem) {
-		TBM_EXYNOS_ERROR("fail to calloc privGem\n");
-		free(bo_exynos);
+		TBM_BCM_ERROR("fail to calloc privGem\n");
+		free(bo_bcm);
 		return 0;
 	}
 
 	privGem->ref_count = 1;
-	privGem->bo_priv = bo_exynos;
+	privGem->bo_priv = bo_bcm;
 
-	if (drmHashInsert(bufmgr_exynos->hashBos, bo_exynos->name,
+	if (drmHashInsert(bufmgr_bcm->hashBos, bo_bcm->name,
 			   (void *)privGem) < 0) {
-		TBM_EXYNOS_ERROR("bo:%p Cannot insert bo to Hash(%d) from gem:%d, fd:%d\n",
-			       bo, bo_exynos->name, gem, key);
+		TBM_BCM_ERROR("bo:%p Cannot insert bo to Hash(%d) from gem:%d, fd:%d\n",
+			       bo, bo_bcm->name, gem, key);
 	}
 
-	TBM_EXYNOS_DEBUG(" bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n",
+	TBM_BCM_DEBUG(" bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d, size:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
 	    key,
-	    bo_exynos->flags_tbm, bo_exynos->flags_exynos,
-	    bo_exynos->size);
+	    bo_bcm->flags_tbm,
+	    bo_bcm->size);
 
-	return (void *)bo_exynos;
+	return (void *)bo_bcm;
 }
 
 static unsigned int
-tbm_exynos_bo_export(tbm_bo bo)
+tbm_bcm_bo_export(tbm_bo bo)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bo_exynos bo_exynos;
+	tbm_bo_bcm bo_bcm;
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	if (!bo_exynos->name) {
-		bo_exynos->name = _get_name(bo_exynos->fd, bo_exynos->gem);
-		if (!bo_exynos->name) {
-			TBM_EXYNOS_ERROR("Cannot get name\n");
+	if (!bo_bcm->name) {
+		bo_bcm->name = _get_name(bo_bcm->fd, bo_bcm->gem);
+		if (!bo_bcm->name) {
+			TBM_BCM_ERROR("Cannot get name\n");
 			return 0;
 		}
 	}
 
-	TBM_EXYNOS_DEBUG("    bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d\n",
+	TBM_BCM_DEBUG("    bo:%p, gem:%d(%d), fd:%d, flags:%d, size:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
-	    bo_exynos->flags_tbm, bo_exynos->flags_exynos,
-	    bo_exynos->size);
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
+	    bo_bcm->flags_tbm,
+	    bo_bcm->size);
 
-	return (unsigned int)bo_exynos->name;
+	return (unsigned int)bo_bcm->name;
 }
 
 tbm_fd
-tbm_exynos_bo_export_fd(tbm_bo bo)
+tbm_bcm_bo_export_fd(tbm_bo bo)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, -1);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, -1);
 
-	tbm_bo_exynos bo_exynos;
+	tbm_bo_bcm bo_bcm;
 	int ret;
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, -1);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, -1);
 
 	struct drm_prime_handle arg = {0, };
 
-	arg.handle = bo_exynos->gem;
-	ret = drmIoctl(bo_exynos->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
+	arg.handle = bo_bcm->gem;
+	ret = drmIoctl(bo_bcm->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
 	if (ret) {
-		TBM_EXYNOS_ERROR("bo:%p Cannot dmabuf=%d (%s)\n",
-			       bo, bo_exynos->gem, strerror(errno));
+		TBM_BCM_ERROR("bo:%p Cannot dmabuf=%d (%s)\n",
+			       bo, bo_bcm->gem, strerror(errno));
 		return (tbm_fd) ret;
 	}
 
-	TBM_EXYNOS_DEBUG(" bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n",
+	TBM_BCM_DEBUG(" bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d, size:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
 	    arg.fd,
-	    bo_exynos->flags_tbm, bo_exynos->flags_exynos,
-	    bo_exynos->size);
+	    bo_bcm->flags_tbm,
+	    bo_bcm->size);
 
 	return (tbm_fd)arg.fd;
 }
 
 static tbm_bo_handle
-tbm_exynos_bo_get_handle(tbm_bo bo, int device)
+tbm_bcm_bo_get_handle(tbm_bo bo, int device)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, (tbm_bo_handle) NULL);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, (tbm_bo_handle) NULL);
 
 	tbm_bo_handle bo_handle;
-	tbm_bo_exynos bo_exynos;
+	tbm_bo_bcm bo_bcm;
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, (tbm_bo_handle) NULL);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, (tbm_bo_handle) NULL);
 
-	if (!bo_exynos->gem) {
-		TBM_EXYNOS_ERROR("Cannot map gem=%d\n", bo_exynos->gem);
+	if (!bo_bcm->gem) {
+		TBM_BCM_ERROR("Cannot map gem=%d\n", bo_bcm->gem);
 		return (tbm_bo_handle) NULL;
 	}
 
-	TBM_EXYNOS_DEBUG("bo:%p, gem:%d(%d), fd:%d, flags:%d(%d), size:%d, %s\n",
+	TBM_BCM_DEBUG("bo:%p, gem:%d(%d), fd:%d, flags:%d, size:%d, %s\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
-	    bo_exynos->flags_tbm, bo_exynos->flags_exynos,
-	    bo_exynos->size,
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
+	    bo_bcm->flags_tbm,
+	    bo_bcm->size,
 	    STR_DEVICE[device]);
 
 	/*Get mapped bo_handle*/
-	bo_handle = _exynos_bo_handle(bo_exynos, device);
+	bo_handle = _bcm_bo_handle(bo_bcm, device);
 	if (bo_handle.ptr == NULL) {
-		TBM_EXYNOS_ERROR("Cannot get handle: gem:%d, device:%d\n",
-			bo_exynos->gem, device);
+		TBM_BCM_ERROR("Cannot get handle: gem:%d, device:%d\n",
+			bo_bcm->gem, device);
 		return (tbm_bo_handle) NULL;
 	}
 
@@ -1469,110 +1410,110 @@ tbm_exynos_bo_get_handle(tbm_bo bo, int device)
 }
 
 static tbm_bo_handle
-tbm_exynos_bo_map(tbm_bo bo, int device, int opt)
+tbm_bcm_bo_map(tbm_bo bo, int device, int opt)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, (tbm_bo_handle) NULL);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, (tbm_bo_handle) NULL);
 
 	tbm_bo_handle bo_handle;
-	tbm_bo_exynos bo_exynos;
-	tbm_bufmgr_exynos bufmgr_exynos;
+	tbm_bo_bcm bo_bcm;
+	tbm_bufmgr_bcm bufmgr_bcm;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, (tbm_bo_handle)NULL);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, (tbm_bo_handle)NULL);
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, (tbm_bo_handle) NULL);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, (tbm_bo_handle) NULL);
 
-	if (!bo_exynos->gem) {
-		TBM_EXYNOS_ERROR("Cannot map gem=%d\n", bo_exynos->gem);
+	if (!bo_bcm->gem) {
+		TBM_BCM_ERROR("Cannot map gem=%d\n", bo_bcm->gem);
 		return (tbm_bo_handle) NULL;
 	}
 
-	TBM_EXYNOS_DEBUG("       bo:%p, gem:%d(%d), fd:%d, %s, %s\n",
+	TBM_BCM_DEBUG("       bo:%p, gem:%d(%d), fd:%d, %s, %s\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf,
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf,
 	    STR_DEVICE[device],
 	    STR_OPT[opt]);
 
 	/*Get mapped bo_handle*/
-	bo_handle = _exynos_bo_handle(bo_exynos, device);
+	bo_handle = _bcm_bo_handle(bo_bcm, device);
 	if (bo_handle.ptr == NULL) {
-		TBM_EXYNOS_ERROR("Cannot get handle: gem:%d, device:%d, opt:%d\n",
-			       bo_exynos->gem, device, opt);
+		TBM_BCM_ERROR("Cannot get handle: gem:%d, device:%d, opt:%d\n",
+			       bo_bcm->gem, device, opt);
 		return (tbm_bo_handle) NULL;
 	}
 
-	if (bo_exynos->map_cnt == 0)
-		_bo_set_cache_state(bufmgr_exynos, bo_exynos, device, opt);
+	if (bo_bcm->map_cnt == 0)
+		_bo_set_cache_state(bufmgr_bcm, bo_bcm, device, opt);
 
-	bo_exynos->last_map_device = device;
+	bo_bcm->last_map_device = device;
 
-	bo_exynos->map_cnt++;
+	bo_bcm->map_cnt++;
 
 	return bo_handle;
 }
 
 static int
-tbm_exynos_bo_unmap(tbm_bo bo)
+tbm_bcm_bo_unmap(tbm_bo bo)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bo_exynos bo_exynos;
-	tbm_bufmgr_exynos bufmgr_exynos;
+	tbm_bo_bcm bo_bcm;
+	tbm_bufmgr_bcm bufmgr_bcm;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
 
-	if (!bo_exynos->gem)
+	if (!bo_bcm->gem)
 		return 0;
 
-	bo_exynos->map_cnt--;
+	bo_bcm->map_cnt--;
 
-	if (bo_exynos->map_cnt == 0)
-		_bo_save_cache_state(bufmgr_exynos, bo_exynos);
+	if (bo_bcm->map_cnt == 0)
+		_bo_save_cache_state(bufmgr_bcm, bo_bcm);
 
 #ifdef ENABLE_CACHECRTL
-	if (bo_exynos->last_map_device == TBM_DEVICE_CPU)
-		_exynos_cache_flush(bufmgr_exynos, bo_exynos, TBM_EXYNOS_CACHE_FLUSH_ALL);
+	if (bo_bcm->last_map_device == TBM_DEVICE_CPU)
+		_exynos_cache_flush(bufmgr_bcm, bo_bcm, TBM_EXYNOS_CACHE_FLUSH_ALL);
 #endif
 
-	bo_exynos->last_map_device = -1;
+	bo_bcm->last_map_device = -1;
 
-	TBM_EXYNOS_DEBUG("     bo:%p, gem:%d(%d), fd:%d\n",
+	TBM_BCM_DEBUG("     bo:%p, gem:%d(%d), fd:%d\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf);
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf);
 
 	return 1;
 }
 
 static int
-tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
+tbm_bcm_bo_lock(tbm_bo bo, int device, int opt)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
 #ifndef ALWAYS_BACKEND_CTRL
-	tbm_bufmgr_exynos bufmgr_exynos;
-	tbm_bo_exynos bo_exynos;
+	tbm_bufmgr_bcm bufmgr_bcm;
+	tbm_bo_bcm bo_bcm;
 	struct dma_buf_fence fence;
 	struct flock filelock;
 	int ret = 0;
 
 	if (device != TBM_DEVICE_3D && device != TBM_DEVICE_CPU) {
-		TBM_EXYNOS_DEBUG("Not support device type,\n");
+		TBM_BCM_DEBUG("Not support device type,\n");
 		return 0;
 	}
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)tbm_backend_get_bufmgr_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	bufmgr_bcm = (tbm_bufmgr_bcm)tbm_backend_get_bufmgr_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
 	memset(&fence, 0, sizeof(struct dma_buf_fence));
 
@@ -1584,21 +1525,21 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 		if (device == TBM_DEVICE_3D)
 			fence.type = DMA_BUF_ACCESS_READ | DMA_BUF_ACCESS_DMA;
 	} else {
-		TBM_EXYNOS_ERROR("Invalid argument\n");
+		TBM_BCM_ERROR("Invalid argument\n");
 		return 0;
 	}
 
 	/* Check if the tbm manager supports dma fence or not. */
-	if (!bufmgr_exynos->use_dma_fence) {
-		TBM_EXYNOS_ERROR("Not support DMA FENCE(%s)\n", strerror(errno));
+	if (!bufmgr_bcm->use_dma_fence) {
+		TBM_BCM_ERROR("Not support DMA FENCE(%s)\n", strerror(errno));
 		return 0;
 
 	}
 
 	if (device == TBM_DEVICE_3D) {
-		ret = ioctl(bo_exynos->dmabuf, DMABUF_IOCTL_GET_FENCE, &fence);
+		ret = ioctl(bo_bcm->dmabuf, DMABUF_IOCTL_GET_FENCE, &fence);
 		if (ret < 0) {
-			TBM_EXYNOS_ERROR("Cannot set GET FENCE(%s)\n", strerror(errno));
+			TBM_BCM_ERROR("Cannot set GET FENCE(%s)\n", strerror(errno));
 			return 0;
 		}
 	} else {
@@ -1611,88 +1552,88 @@ tbm_exynos_bo_lock(tbm_bo bo, int device, int opt)
 		filelock.l_start = 0;
 		filelock.l_len = 0;
 
-		if (-1 == fcntl(bo_exynos->dmabuf, F_SETLKW, &filelock))
+		if (-1 == fcntl(bo_bcm->dmabuf, F_SETLKW, &filelock))
 			return 0;
 	}
 
-	pthread_mutex_lock(&bo_exynos->mutex);
+	pthread_mutex_lock(&bo_bcm->mutex);
 
 	if (device == TBM_DEVICE_3D) {
 		int i;
 
 		for (i = 0; i < DMA_FENCE_LIST_MAX; i++) {
-			if (bo_exynos->dma_fence[i].ctx == 0) {
-				bo_exynos->dma_fence[i].type = fence.type;
-				bo_exynos->dma_fence[i].ctx = fence.ctx;
+			if (bo_bcm->dma_fence[i].ctx == 0) {
+				bo_bcm->dma_fence[i].type = fence.type;
+				bo_bcm->dma_fence[i].ctx = fence.ctx;
 				break;
 			}
 		}
 
 		if (i == DMA_FENCE_LIST_MAX) {
 			/*TODO: if dma_fence list is full, it needs realloc. I will fix this. by minseok3.kim*/
-			TBM_EXYNOS_ERROR("fence list is full\n");
+			TBM_BCM_ERROR("fence list is full\n");
 		}
 	}
 
-	pthread_mutex_unlock(&bo_exynos->mutex);
+	pthread_mutex_unlock(&bo_bcm->mutex);
 
-	TBM_EXYNOS_DEBUG("DMABUF_IOCTL_GET_FENCE! bo:%p, gem:%d(%d), fd:%ds\n",
+	TBM_BCM_DEBUG("DMABUF_IOCTL_GET_FENCE! bo:%p, gem:%d(%d), fd:%ds\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf);
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf);
 #endif /* ALWAYS_BACKEND_CTRL */
 
 	return 1;
 }
 
 static int
-tbm_exynos_bo_unlock(tbm_bo bo)
+tbm_bcm_bo_unlock(tbm_bo bo)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
 #ifndef ALWAYS_BACKEND_CTRL
-	tbm_bo_exynos bo_exynos;
+	tbm_bo_bcm bo_bcm;
 	struct dma_buf_fence fence;
 	struct flock filelock;
 	unsigned int dma_type = 0;
 	int ret = 0;
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	if (bo_exynos->dma_fence[0].type & DMA_BUF_ACCESS_DMA)
+	if (bo_bcm->dma_fence[0].type & DMA_BUF_ACCESS_DMA)
 		dma_type = 1;
 
-	if (!bo_exynos->dma_fence[0].ctx && dma_type) {
-		TBM_EXYNOS_DEBUG("FENCE not support or ignored,\n");
+	if (!bo_bcm->dma_fence[0].ctx && dma_type) {
+		TBM_BCM_DEBUG("FENCE not support or ignored,\n");
 		return 0;
 	}
 
-	if (!bo_exynos->dma_fence[0].ctx && dma_type) {
-		TBM_EXYNOS_DEBUG("device type is not 3D/CPU,\n");
+	if (!bo_bcm->dma_fence[0].ctx && dma_type) {
+		TBM_BCM_DEBUG("device type is not 3D/CPU,\n");
 		return 0;
 	}
 
-	pthread_mutex_lock(&bo_exynos->mutex);
+	pthread_mutex_lock(&bo_bcm->mutex);
 
 	if (dma_type) {
-		fence.type = bo_exynos->dma_fence[0].type;
-		fence.ctx = bo_exynos->dma_fence[0].ctx;
+		fence.type = bo_bcm->dma_fence[0].type;
+		fence.ctx = bo_bcm->dma_fence[0].ctx;
 		int i;
 
 		for (i = 1; i < DMA_FENCE_LIST_MAX; i++) {
-			bo_exynos->dma_fence[i - 1].type = bo_exynos->dma_fence[i].type;
-			bo_exynos->dma_fence[i - 1].ctx = bo_exynos->dma_fence[i].ctx;
+			bo_bcm->dma_fence[i - 1].type = bo_bcm->dma_fence[i].type;
+			bo_bcm->dma_fence[i - 1].ctx = bo_bcm->dma_fence[i].ctx;
 		}
-		bo_exynos->dma_fence[DMA_FENCE_LIST_MAX - 1].type = 0;
-		bo_exynos->dma_fence[DMA_FENCE_LIST_MAX - 1].ctx = 0;
+		bo_bcm->dma_fence[DMA_FENCE_LIST_MAX - 1].type = 0;
+		bo_bcm->dma_fence[DMA_FENCE_LIST_MAX - 1].ctx = 0;
 	}
-	pthread_mutex_unlock(&bo_exynos->mutex);
+	pthread_mutex_unlock(&bo_bcm->mutex);
 
 	if (dma_type) {
-		ret = ioctl(bo_exynos->dmabuf, DMABUF_IOCTL_PUT_FENCE, &fence);
+		ret = ioctl(bo_bcm->dmabuf, DMABUF_IOCTL_PUT_FENCE, &fence);
 		if (ret < 0) {
-			TBM_EXYNOS_ERROR("Can not set PUT FENCE(%s)\n", strerror(errno));
+			TBM_BCM_ERROR("Can not set PUT FENCE(%s)\n", strerror(errno));
 			return 0;
 		}
 	} else {
@@ -1701,61 +1642,61 @@ tbm_exynos_bo_unlock(tbm_bo bo)
 		filelock.l_start = 0;
 		filelock.l_len = 0;
 
-		if (-1 == fcntl(bo_exynos->dmabuf, F_SETLKW, &filelock))
+		if (-1 == fcntl(bo_bcm->dmabuf, F_SETLKW, &filelock))
 			return 0;
 	}
 
-	TBM_EXYNOS_DEBUG("DMABUF_IOCTL_PUT_FENCE! bo:%p, gem:%d(%d), fd:%ds\n",
+	TBM_BCM_DEBUG("DMABUF_IOCTL_PUT_FENCE! bo:%p, gem:%d(%d), fd:%ds\n",
 	    bo,
-	    bo_exynos->gem, bo_exynos->name,
-	    bo_exynos->dmabuf);
+	    bo_bcm->gem, bo_bcm->name,
+	    bo_bcm->dmabuf);
 #endif /* ALWAYS_BACKEND_CTRL */
 
 	return 1;
 }
 
 static void
-tbm_exynos_bufmgr_deinit(void *priv)
+tbm_bcm_bufmgr_deinit(void *priv)
 {
-	EXYNOS_RETURN_IF_FAIL(priv != NULL);
+	BCM_RETURN_IF_FAIL(priv != NULL);
 
-	tbm_bufmgr_exynos bufmgr_exynos;
+	tbm_bufmgr_bcm bufmgr_bcm;
 
-	bufmgr_exynos = (tbm_bufmgr_exynos)priv;
+	bufmgr_bcm = (tbm_bufmgr_bcm)priv;
 
-	if (bufmgr_exynos->hashBos) {
+	if (bufmgr_bcm->hashBos) {
 		unsigned long key;
 		void *value;
 
-		while (drmHashFirst(bufmgr_exynos->hashBos, &key, &value) > 0) {
+		while (drmHashFirst(bufmgr_bcm->hashBos, &key, &value) > 0) {
 			free(value);
-			drmHashDelete(bufmgr_exynos->hashBos, key);
+			drmHashDelete(bufmgr_bcm->hashBos, key);
 		}
 
-		drmHashDestroy(bufmgr_exynos->hashBos);
-		bufmgr_exynos->hashBos = NULL;
+		drmHashDestroy(bufmgr_bcm->hashBos);
+		bufmgr_bcm->hashBos = NULL;
 	}
 
-	_bufmgr_deinit_cache_state(bufmgr_exynos);
+	_bufmgr_deinit_cache_state(bufmgr_bcm);
 
-	if (bufmgr_exynos->bind_display)
+	if (bufmgr_bcm->bind_display)
 		tbm_drm_helper_wl_auth_server_deinit();
 
-	if (bufmgr_exynos->device_name)
-		free(bufmgr_exynos->device_name);
+	if (bufmgr_bcm->device_name)
+		free(bufmgr_bcm->device_name);
 
 	if (tbm_backend_is_display_server())
 		tbm_drm_helper_unset_tbm_master_fd();
 	else
 		tbm_drm_helper_unset_fd();
 
-	close(bufmgr_exynos->fd);
+	close(bufmgr_bcm->fd);
 
-	free(bufmgr_exynos);
+	free(bufmgr_bcm);
 }
 
 int
-tbm_exynos_surface_supported_format(uint32_t **formats, uint32_t *num)
+tbm_bcm_surface_supported_format(uint32_t **formats, uint32_t *num)
 {
 	uint32_t *color_formats = NULL;
 
@@ -1765,13 +1706,13 @@ tbm_exynos_surface_supported_format(uint32_t **formats, uint32_t *num)
 	if (color_formats == NULL)
 		return 0;
 
-	memcpy(color_formats, tbm_exynos_color_format_list,
+	memcpy(color_formats, tbm_bcm_color_format_list,
 	       sizeof(uint32_t)*TBM_COLOR_FORMAT_COUNT);
 
 	*formats = color_formats;
 	*num = TBM_COLOR_FORMAT_COUNT;
 
-	TBM_EXYNOS_DEBUG("tbm_exynos_surface_supported_format  count = %d\n", *num);
+	TBM_BCM_DEBUG("tbm_bcm_surface_supported_format  count = %d\n", *num);
 
 	return 1;
 }
@@ -1842,7 +1783,7 @@ _new_calc_uvplane_nv12(int width, int height)
  * @return 1 if this function succeeds, otherwise 0.
  */
 int
-tbm_exynos_surface_get_plane_data(int width, int height,
+tbm_bcm_surface_get_plane_data(int width, int height,
 				  tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset,
 				  uint32_t *pitch, int *bo_idx)
 {
@@ -2121,97 +2062,97 @@ tbm_exynos_surface_get_plane_data(int width, int height,
 }
 
 int
-tbm_exynos_bo_get_flags(tbm_bo bo)
+tbm_bcm_bo_get_flags(tbm_bo bo)
 {
-	EXYNOS_RETURN_VAL_IF_FAIL(bo != NULL, 0);
+	BCM_RETURN_VAL_IF_FAIL(bo != NULL, 0);
 
-	tbm_bo_exynos bo_exynos;
+	tbm_bo_bcm bo_bcm;
 
-	bo_exynos = (tbm_bo_exynos)tbm_backend_get_bo_priv(bo);
-	EXYNOS_RETURN_VAL_IF_FAIL(bo_exynos != NULL, 0);
+	bo_bcm = (tbm_bo_bcm)tbm_backend_get_bo_priv(bo);
+	BCM_RETURN_VAL_IF_FAIL(bo_bcm != NULL, 0);
 
-	return bo_exynos->flags_tbm;
+	return bo_bcm->flags_tbm;
 }
 
 int
-tbm_exynos_bufmgr_bind_native_display(tbm_bufmgr bufmgr, void *native_display)
+tbm_bcm_bufmgr_bind_native_display(tbm_bufmgr bufmgr, void *native_display)
 {
-	tbm_bufmgr_exynos bufmgr_exynos;
+	tbm_bufmgr_bcm bufmgr_bcm;
 
-	bufmgr_exynos = tbm_backend_get_priv_from_bufmgr(bufmgr);
-	EXYNOS_RETURN_VAL_IF_FAIL(bufmgr_exynos != NULL, 0);
+	bufmgr_bcm = tbm_backend_get_priv_from_bufmgr(bufmgr);
+	BCM_RETURN_VAL_IF_FAIL(bufmgr_bcm != NULL, 0);
 
-	if (!tbm_drm_helper_wl_auth_server_init(native_display, bufmgr_exynos->fd,
-					   bufmgr_exynos->device_name, 0)) {
-		TBM_EXYNOS_ERROR("fail to tbm_drm_helper_wl_server_init\n");
+	if (!tbm_drm_helper_wl_auth_server_init(native_display, bufmgr_bcm->fd,
+					   bufmgr_bcm->device_name, 0)) {
+		TBM_BCM_ERROR("fail to tbm_drm_helper_wl_server_init\n");
 		return 0;
 	}
 
-	bufmgr_exynos->bind_display = native_display;
+	bufmgr_bcm->bind_display = native_display;
 
 	return 1;
 }
 
 MODULEINITPPROTO(init_tbm_bufmgr_priv);
 
-static TBMModuleVersionInfo ExynosVersRec = {
-	"exynos",
-	"Samsung",
+static TBMModuleVersionInfo BcmVersRec = {
+	"bcm2837",
+	"Broadcom",
 	TBM_ABI_VERSION,
 };
 
-TBMModuleData tbmModuleData = { &ExynosVersRec, init_tbm_bufmgr_priv};
+TBMModuleData tbmModuleData = { &BcmVersRec, init_tbm_bufmgr_priv};
 
 int
 init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 {
 	tbm_bufmgr_backend bufmgr_backend;
-	tbm_bufmgr_exynos bufmgr_exynos;
+	tbm_bufmgr_bcm bufmgr_bcm;
 	int fp;
 
 	if (!bufmgr)
 		return 0;
 
-	bufmgr_exynos = calloc(1, sizeof(struct _tbm_bufmgr_exynos));
-	if (!bufmgr_exynos) {
-		TBM_EXYNOS_ERROR("fail to alloc bufmgr_exynos!\n");
+	bufmgr_bcm = calloc(1, sizeof(struct _tbm_bufmgr_bcm));
+	if (!bufmgr_bcm) {
+		TBM_BCM_ERROR("fail to alloc bufmgr_bcm!\n");
 		return 0;
 	}
 
 	if (tbm_backend_is_display_server()) {
-		bufmgr_exynos->fd = tbm_drm_helper_get_master_fd();
-		if (bufmgr_exynos->fd < 0) {
-			bufmgr_exynos->fd = _tbm_exynos_open_drm();
-			if (bufmgr_exynos->fd < 0) {
-				TBM_EXYNOS_ERROR("fail to open drm!\n", getpid());
+		bufmgr_bcm->fd = tbm_drm_helper_get_master_fd();
+		if (bufmgr_bcm->fd < 0) {
+			bufmgr_bcm->fd = _tbm_bcm_open_drm();
+			if (bufmgr_bcm->fd < 0) {
+				TBM_BCM_ERROR("fail to open drm!\n", getpid());
 				goto fail_open_drm;
 			}
 		}
 
-		tbm_drm_helper_set_tbm_master_fd(bufmgr_exynos->fd);
+		tbm_drm_helper_set_tbm_master_fd(bufmgr_bcm->fd);
 
-		bufmgr_exynos->device_name = drmGetDeviceNameFromFd(bufmgr_exynos->fd);
-		if (!bufmgr_exynos->device_name) {
-			TBM_EXYNOS_ERROR("fail to get device name!\n", getpid());
+		bufmgr_bcm->device_name = drmGetDeviceNameFromFd(bufmgr_bcm->fd);
+		if (!bufmgr_bcm->device_name) {
+			TBM_BCM_ERROR("fail to get device name!\n", getpid());
 
 			tbm_drm_helper_unset_tbm_master_fd();
 			goto fail_get_device_name;
 		}
 	} else {
 		if (_check_render_node()) {
-			bufmgr_exynos->fd = _get_render_node();
-			if (bufmgr_exynos->fd < 0) {
-				TBM_EXYNOS_ERROR("fail to get render node\n");
+			bufmgr_bcm->fd = _get_render_node();//TODO
+			if (bufmgr_bcm->fd < 0) {
+				TBM_BCM_ERROR("fail to get render node\n");
 				goto fail_get_render_node;
 			}
-			TBM_EXYNOS_DEBUG("Use render node:%d\n", bufmgr_exynos->fd);
+			TBM_BCM_DEBUG("Use render node:%d\n", bufmgr_bcm->fd);
 		} else {
-			if (!tbm_drm_helper_get_auth_info(&(bufmgr_exynos->fd), &(bufmgr_exynos->device_name), NULL)) {
-				TBM_EXYNOS_ERROR("fail to get auth drm info!\n");
+			if (!tbm_drm_helper_get_auth_info(&(bufmgr_bcm->fd), &(bufmgr_bcm->device_name), NULL)) {
+				TBM_BCM_ERROR("fail to get auth drm info!\n");
 				goto fail_get_auth_info;
 			}
 
-			tbm_drm_helper_set_fd(bufmgr_exynos->fd);
+			tbm_drm_helper_set_fd(bufmgr_bcm->fd);
 		}
 	}
 
@@ -2222,48 +2163,48 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 		int length = read(fp, buf, 1);
 
 		if (length == 1 && buf[0] == '1')
-			bufmgr_exynos->use_dma_fence = 1;
+			bufmgr_bcm->use_dma_fence = 1;
 
 		close(fp);
 	}
 
-	if (!_bufmgr_init_cache_state(bufmgr_exynos)) {
-		TBM_EXYNOS_ERROR("fail to init bufmgr cache state\n");
+	if (!_bufmgr_init_cache_state(bufmgr_bcm)) {
+		TBM_BCM_ERROR("fail to init bufmgr cache state\n");
 		goto fail_init_cache_state;
 	}
 
 	/*Create Hash Table*/
-	bufmgr_exynos->hashBos = drmHashCreate();
+	bufmgr_bcm->hashBos = drmHashCreate();
 
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
-		TBM_EXYNOS_ERROR("fail to alloc backend!\n");
+		TBM_BCM_ERROR("fail to alloc backend!\n");
 		goto fail_alloc_backend;
 	}
 
-	bufmgr_backend->priv = (void *)bufmgr_exynos;
-	bufmgr_backend->bufmgr_deinit = tbm_exynos_bufmgr_deinit;
-	bufmgr_backend->bo_size = tbm_exynos_bo_size;
-	bufmgr_backend->bo_alloc = tbm_exynos_bo_alloc;
-	bufmgr_backend->bo_free = tbm_exynos_bo_free;
-	bufmgr_backend->bo_import = tbm_exynos_bo_import;
-	bufmgr_backend->bo_import_fd = tbm_exynos_bo_import_fd;
-	bufmgr_backend->bo_export = tbm_exynos_bo_export;
-	bufmgr_backend->bo_export_fd = tbm_exynos_bo_export_fd;
-	bufmgr_backend->bo_get_handle = tbm_exynos_bo_get_handle;
-	bufmgr_backend->bo_map = tbm_exynos_bo_map;
-	bufmgr_backend->bo_unmap = tbm_exynos_bo_unmap;
-	bufmgr_backend->surface_get_plane_data = tbm_exynos_surface_get_plane_data;
-	bufmgr_backend->surface_supported_format = tbm_exynos_surface_supported_format;
-	bufmgr_backend->bo_get_flags = tbm_exynos_bo_get_flags;
-	bufmgr_backend->bo_lock = tbm_exynos_bo_lock;
-	bufmgr_backend->bo_unlock = tbm_exynos_bo_unlock;
+	bufmgr_backend->priv = (void *)bufmgr_bcm;
+	bufmgr_backend->bufmgr_deinit = tbm_bcm_bufmgr_deinit;
+	bufmgr_backend->bo_size = tbm_bcm_bo_size;
+	bufmgr_backend->bo_alloc = tbm_bcm_bo_alloc;
+	bufmgr_backend->bo_free = tbm_bcm_bo_free;
+	bufmgr_backend->bo_import = tbm_bcm_bo_import;
+	bufmgr_backend->bo_import_fd = tbm_bcm_bo_import_fd;
+	bufmgr_backend->bo_export = tbm_bcm_bo_export;
+	bufmgr_backend->bo_export_fd = tbm_bcm_bo_export_fd;
+	bufmgr_backend->bo_get_handle = tbm_bcm_bo_get_handle;
+	bufmgr_backend->bo_map = tbm_bcm_bo_map;
+	bufmgr_backend->bo_unmap = tbm_bcm_bo_unmap;
+	bufmgr_backend->surface_get_plane_data = tbm_bcm_surface_get_plane_data;
+	bufmgr_backend->surface_supported_format = tbm_bcm_surface_supported_format;
+	bufmgr_backend->bo_get_flags = tbm_bcm_bo_get_flags;
+	bufmgr_backend->bo_lock = tbm_bcm_bo_lock;
+	bufmgr_backend->bo_unlock = tbm_bcm_bo_unlock;
 
 	if (tbm_backend_is_display_server() && !_check_render_node())
-		bufmgr_backend->bufmgr_bind_native_display = tbm_exynos_bufmgr_bind_native_display;
+		bufmgr_backend->bufmgr_bind_native_display = tbm_bcm_bufmgr_bind_native_display;
 
 	if (!tbm_backend_init(bufmgr, bufmgr_backend)) {
-		TBM_EXYNOS_ERROR("fail to init backend!\n");
+		TBM_BCM_ERROR("fail to init backend!\n");
 		goto fail_init_backend;
 	}
 
@@ -2271,36 +2212,36 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 	{
 		char *env;
 
-		env = getenv("TBM_EXYNOS_DEBUG");
+		env = getenv("TBM_BCM_DEBUG");
 		if (env) {
 			bDebug = atoi(env);
-			TBM_EXYNOS_ERROR("TBM_EXYNOS_DEBUG=%s\n", env);
+			TBM_BCM_ERROR("TBM_BCM_DEBUG=%s\n", env);
 		} else
 			bDebug = 0;
 	}
 #endif
 
-	TBM_EXYNOS_DEBUG("drm_fd:%d\n", bufmgr_exynos->fd);
+	TBM_BCM_DEBUG("drm_fd:%d\n", bufmgr_bcm->fd);
 
 	return 1;
 
 fail_init_backend:
 	tbm_backend_free(bufmgr_backend);
 fail_alloc_backend:
-	if (bufmgr_exynos->hashBos)
-		drmHashDestroy(bufmgr_exynos->hashBos);
-	_bufmgr_deinit_cache_state(bufmgr_exynos);
+	if (bufmgr_bcm->hashBos)
+		drmHashDestroy(bufmgr_bcm->hashBos);
+	_bufmgr_deinit_cache_state(bufmgr_bcm);
 fail_init_cache_state:
 	if (tbm_backend_is_display_server())
 		tbm_drm_helper_unset_tbm_master_fd();
 	else
 		tbm_drm_helper_unset_fd();
 fail_get_device_name:
-	close(bufmgr_exynos->fd);
+	close(bufmgr_bcm->fd);
 fail_get_auth_info:
 fail_get_render_node:
 fail_open_drm:
-	free(bufmgr_exynos);
+	free(bufmgr_bcm);
 	return 0;
 }
 

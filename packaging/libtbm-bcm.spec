@@ -1,20 +1,19 @@
-Name:           libtbm-exynos
+Name:           libtbm-bcm
 Version:        1.2.6
 Release:        1
 License:        MIT
-Summary:        Tizen Buffer Manager - exynos backend
+Summary:        Tizen Buffer Manager - bcm backend
 Group:          System/Libraries
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  pkgconfig(libdrm)
-BuildRequires:  pkgconfig(libdrm_exynos)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
 BuildRequires:  pkgconfig(libudev)
 ExclusiveArch:  %{arm} aarch64
 
 %description
-descriptionion: Tizen Buffer manager backend module for exynos
+descriptionion: Tizen Buffer manager backend module for bcm
 
 %if 0%{?TZ_SYS_RO_SHARE:1}
 # TZ_SYS_RO_SHARE is already defined
@@ -45,7 +44,7 @@ cp -af COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
 
 %if "%_repository" == "target-circle"
 mkdir -p %{buildroot}%{_libdir}/udev/rules.d/
-cp -af rules/99-libtbm_exynos.rules %{buildroot}%{_libdir}/udev/rules.d/
+cp -af rules/99-libtbm_bmc.rules %{buildroot}%{_libdir}/udev/rules.d/
 %endif
 
 %make_install
@@ -55,7 +54,7 @@ cp -af rules/99-libtbm_exynos.rules %{buildroot}%{_libdir}/udev/rules.d/
 if [ -f %{_libdir}/bufmgr/libtbm_default.so ]; then
     rm -rf %{_libdir}/bufmgr/libtbm_default.so
 fi
-ln -s libtbm_exynos.so %{_libdir}/bufmgr/libtbm_default.so
+ln -s libtbm_bcm.so %{_libdir}/bufmgr/libtbm_default.so
 
 %postun -p /sbin/ldconfig
 
@@ -63,5 +62,5 @@ ln -s libtbm_exynos.so %{_libdir}/bufmgr/libtbm_default.so
 %{_libdir}/bufmgr/libtbm_*.so*
 %{TZ_SYS_RO_SHARE}/license/%{name}
 %if "%_repository" == "target-circle"
-%{_libdir}/udev/rules.d/99-libtbm_exynos.rules
+%{_libdir}/udev/rules.d/99-libtbm_bcm.rules
 %endif

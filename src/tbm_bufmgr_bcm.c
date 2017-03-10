@@ -46,7 +46,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86drm.h>
 #include <tbm_bufmgr.h>
 #include <tbm_bufmgr_backend.h>
-#include <exynos_drm.h>
 #include <pthread.h>
 #include <tbm_surface.h>
 #include <tbm_surface_internal.h>
@@ -117,8 +116,8 @@ char *target_name()
 #define TBM_SURFACE_ALIGNMENT_PLANE (8)
 #define TBM_SURFACE_ALIGNMENT_PITCH_RGB (8)
 #else
-#define TBM_SURFACE_ALIGNMENT_PLANE (64)
-#define TBM_SURFACE_ALIGNMENT_PITCH_RGB (64)
+#define TBM_SURFACE_ALIGNMENT_PLANE (16)
+#define TBM_SURFACE_ALIGNMENT_PITCH_RGB (16)
 #endif
 
 #define TBM_SURFACE_ALIGNMENT_PLANE_NV12 (4096)
@@ -2138,6 +2137,7 @@ init_tbm_bufmgr_priv(tbm_bufmgr bufmgr, int fd)
 			tbm_drm_helper_unset_tbm_master_fd();
 			goto fail_get_device_name;
 		}
+		tbm_drm_helper_set_fd(bufmgr_bcm->fd);
 	} else {
 		if (_check_render_node()) {
 			bufmgr_bcm->fd = _get_render_node();//TODO

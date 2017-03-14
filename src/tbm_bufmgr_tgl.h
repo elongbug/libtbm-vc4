@@ -127,30 +127,30 @@ enum {
 
 #ifdef ENABLE_CACHECRTL
 /* indicate cache units. */
-enum e_drm_exynos_gem_cache_sel {
-	EXYNOS_DRM_L1_CACHE		= 1 << 0,
-	EXYNOS_DRM_L2_CACHE		= 1 << 1,
-	EXYNOS_DRM_ALL_CORES		= 1 << 2,
-	EXYNOS_DRM_ALL_CACHES		= EXYNOS_DRM_L1_CACHE |
-						EXYNOS_DRM_L2_CACHE,
-	EXYNOS_DRM_ALL_CACHES_CORES	= EXYNOS_DRM_L1_CACHE |
-						EXYNOS_DRM_L2_CACHE |
-						EXYNOS_DRM_ALL_CORES,
-	EXYNOS_DRM_CACHE_SEL_MASK	= EXYNOS_DRM_ALL_CACHES_CORES
+enum e_drm_vc4_gem_cache_sel {
+	VC4_DRM_L1_CACHE		= 1 << 0,
+	VC4_DRM_L2_CACHE		= 1 << 1,
+	VC4_DRM_ALL_CORES		= 1 << 2,
+	VC4_DRM_ALL_CACHES		= VC4_DRM_L1_CACHE |
+						VC4_DRM_L2_CACHE,
+	VC4_DRM_ALL_CACHES_CORES	= VC4_DRM_L1_CACHE |
+						VC4_DRM_L2_CACHE |
+						VC4_DRM_ALL_CORES,
+	VC4_DRM_CACHE_SEL_MASK	= VC4_DRM_ALL_CACHES_CORES
 };
 
 /* indicate cache operation types. */
-enum e_drm_exynos_gem_cache_op {
-	EXYNOS_DRM_CACHE_INV_ALL	= 1 << 3,
-	EXYNOS_DRM_CACHE_INV_RANGE	= 1 << 4,
-	EXYNOS_DRM_CACHE_CLN_ALL	= 1 << 5,
-	EXYNOS_DRM_CACHE_CLN_RANGE	= 1 << 6,
-	EXYNOS_DRM_CACHE_FSH_ALL	= EXYNOS_DRM_CACHE_INV_ALL |
-						EXYNOS_DRM_CACHE_CLN_ALL,
-	EXYNOS_DRM_CACHE_FSH_RANGE	= EXYNOS_DRM_CACHE_INV_RANGE |
-						EXYNOS_DRM_CACHE_CLN_RANGE,
-	EXYNOS_DRM_CACHE_OP_MASK	= EXYNOS_DRM_CACHE_FSH_ALL |
-						EXYNOS_DRM_CACHE_FSH_RANGE
+enum e_drm_vc4_gem_cache_op {
+	VC4_DRM_CACHE_INV_ALL	= 1 << 3,
+	VC4_DRM_CACHE_INV_RANGE	= 1 << 4,
+	VC4_DRM_CACHE_CLN_ALL	= 1 << 5,
+	VC4_DRM_CACHE_CLN_RANGE	= 1 << 6,
+	VC4_DRM_CACHE_FSH_ALL	= VC4_DRM_CACHE_INV_ALL |
+						VC4_DRM_CACHE_CLN_ALL,
+	VC4_DRM_CACHE_FSH_RANGE	= VC4_DRM_CACHE_INV_RANGE |
+						VC4_DRM_CACHE_CLN_RANGE,
+	VC4_DRM_CACHE_OP_MASK	= VC4_DRM_CACHE_FSH_ALL |
+						VC4_DRM_CACHE_FSH_RANGE
 };
 
 /**
@@ -163,17 +163,17 @@ enum e_drm_exynos_gem_cache_op {
  * @gem_handle: a handle to a gem object.
  *	this gem handle is needed for cache range operation to L2 cache.
  */
-struct drm_exynos_gem_cache_op {
+struct drm_vc4_gem_cache_op {
 	uint64_t usr_addr;
 	unsigned int size;
 	unsigned int flags;
 	unsigned int gem_handle;
 };
 
-#define DRM_EXYNOS_GEM_CACHE_OP		0x12
+#define DRM_VC4_GEM_CACHE_OP		0x12
 
-#define DRM_IOCTL_EXYNOS_GEM_CACHE_OP  DRM_IOWR(DRM_COMMAND_BASE + \
-		DRM_EXYNOS_GEM_CACHE_OP, struct drm_exynos_gem_cache_op)
+#define DRM_IOCTL_VC4_GEM_CACHE_OP  DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_VC4_GEM_CACHE_OP, struct drm_vc4_gem_cache_op)
 
 #endif
 

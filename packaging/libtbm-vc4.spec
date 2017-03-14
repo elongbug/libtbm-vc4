@@ -1,19 +1,20 @@
-Name:           libtbm-bcm
-Version:        1.2.6
+Name:           libtbm-vc4
+Version:        0.0.5
 Release:        1
 License:        MIT
-Summary:        Tizen Buffer Manager - bcm backend
+Summary:        Tizen Buffer Manager - vc4 backend
 Group:          System/Libraries
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  pkgconfig(libdrm)
+BuildRequires:  pkgconfig(libdrm_vc4)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
 BuildRequires:  pkgconfig(libudev)
 ExclusiveArch:  %{arm} aarch64
 
 %description
-descriptionion: Tizen Buffer manager backend module for bcm
+descriptionion: Tizen Buffer manager backend module for vc4
 
 %if 0%{?TZ_SYS_RO_SHARE:1}
 # TZ_SYS_RO_SHARE is already defined
@@ -27,13 +28,9 @@ descriptionion: Tizen Buffer manager backend module for bcm
 %build
 
 %reconfigure --prefix=%{_prefix} --libdir=%{_libdir}/bufmgr \
-%if "%_repository" == "target-circle"
-             --enable-align-eight \
-	     --enable-cachectrl \
-%else
-	     --disable-cachectrl \
-%endif
-            CFLAGS="${CFLAGS} -Wall -Werror" LDFLAGS="${LDFLAGS} -Wl,--hash-style=both -Wl,--as-needed"
+			--disable-align-eight \
+			--disable-cachectrl \
+			CFLAGS="${CFLAGS} -Wall -Werror" LDFLAGS="${LDFLAGS} -Wl,--hash-style=both -Wl,--as-needed"
 
 make %{?_smp_mflags}
 
@@ -42,25 +39,21 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}/%{TZ_SYS_RO_SHARE}/license
 cp -af COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
 
-%if "%_repository" == "target-circle"
+# make rule for tgl
 mkdir -p %{buildroot}%{_libdir}/udev/rules.d/
-cp -af rules/99-libtbm_bmc.rules %{buildroot}%{_libdir}/udev/rules.d/
-%endif
+cp -af rules/99-libtbm-vc4.rules %{buildroot}%{_libdir}/udev/rules.d/
 
 %make_install
-
 
 %post
 if [ -f %{_libdir}/bufmgr/libtbm_default.so ]; then
     rm -rf %{_libdir}/bufmgr/libtbm_default.so
 fi
-ln -s libtbm_bcm.so %{_libdir}/bufmgr/libtbm_default.so
+ln -s libtbm-vc4.so %{_libdir}/bufmgr/libtbm_default.so
 
 %postun -p /sbin/ldconfig
 
 %files
-%{_libdir}/bufmgr/libtbm_*.so*
+%{_libdir}/bufmgr/libtbm-*.so*
 %{TZ_SYS_RO_SHARE}/license/%{name}
-%if "%_repository" == "target-circle"
-%{_libdir}/udev/rules.d/99-libtbm_bcm.rules
-%endif
+%{_libdir}/udev/rules.d/99-libtbm-vc4.rules
